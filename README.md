@@ -30,8 +30,8 @@ npm run electron:dev
 
 Lệnh trên sẽ mở cửa sổ app y hệt bản bạn đã dùng trên Claude, nhưng chạy như
 một app Windows thật, dữ liệu lưu vào một file JSON trên máy bạn (không mất
-khi tắt app). Lần đầu chạy sẽ tự có sẵn 2 chiến thuật mẫu ở map Dust2 giống
-bản bạn đang test.
+khi tắt app). Lần đầu chạy sẽ tự có sẵn dữ liệu chiến thuật của bạn (map
+Anubis, Mirage...) kèm đầy đủ ảnh, y hệt bản bạn đã tạo trên Claude.
 
 > Sửa code trong `src/App.jsx` xong thì chỉ cần lưu file, app tự load lại.
 
@@ -133,7 +133,7 @@ cs2-tactics-desktop/
 │  ├─ App.jsx        # Toàn bộ giao diện (y hệt bản trên Claude)
 │  └─ main.jsx       # Điểm khởi động React
 ├─ seed/
-│  └─ default-data.json  # Dữ liệu mẫu nạp sẵn lần đầu cài (map Dust2)
+│  └─ default-data.json  # Dữ liệu mẫu nạp sẵn lần đầu cài (đã cập nhật theo dữ liệu của bạn)
 ├─ .github/workflows/release.yml  # Tự build + publish khi push tag
 ├─ package.json      # Cấu hình app, script, electron-builder
 └─ vite.config.js
@@ -143,11 +143,12 @@ cs2-tactics-desktop/
 
 ## Lưu ý quan trọng
 
-- **Ảnh đã upload trong lúc test trên Claude chưa có trong file mẫu này.**
-  Những ảnh đó được lưu trong phiên làm việc trên Claude.ai, mình không lấy
-  ra được để đóng gói cùng. Phần **văn bản, video, tên chiến thuật** thì đã
-  đóng gói đầy đủ y hệt bảng gốc bạn gửi. Bạn có thể mở app, vào "Sửa chiến
-  thuật" và tải lại ảnh cho từng role như bình thường.
+- **Dữ liệu mẫu (`seed/default-data.json`) đã được cập nhật theo file bạn xuất
+  ra từ app**, bao gồm đầy đủ ảnh (map Anubis, Mirage...). Từ giờ mỗi khi bạn
+  muốn cập nhật dữ liệu mặc định cho bản cài đặt mới, cứ bấm "Xuất dữ liệu"
+  trong app rồi gửi lại file JSON đó là mình cập nhật tiếp.
+- Muốn thêm dữ liệu chỉ cho riêng máy bạn (không ảnh hưởng bản cài đặt gốc)
+  thì dùng nút "Nhập dữ liệu" ngay trong app, không cần sửa lại project.
 - Sau khi cài, dữ liệu lưu tại:
   `%APPDATA%\cs2-tactics-board\store.json` (Windows) — có thể sao lưu file
   này để chuyển dữ liệu sang máy khác.

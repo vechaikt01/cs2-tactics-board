@@ -1,7 +1,7 @@
 {
   "name": "cs2-tactics-board",
   "productName": "CS2 Tactics Board",
-  "version": "1.0.1",
+  "version": "1.0.0",
   "description": "Ứng dụng quản lý chiến thuật CS2 theo map, chạy offline trên Windows.",
   "author": "YOUR_NAME",
   "license": "MIT",
@@ -42,9 +42,7 @@
       "output": "release"
     },
     "win": {
-      "target": [
-        "nsis"
-      ]
+      "target": ["nsis"]
     },
     "nsis": {
       "oneClick": false,
@@ -54,8 +52,8 @@
     "publish": [
       {
         "provider": "github",
-        "owner": "vechaikt01",
-        "repo": "cs2-tactics-board"
+        "owner": "YOUR_GITHUB_USERNAME",
+        "repo": "YOUR_REPO_NAME"
       }
     ]
   }

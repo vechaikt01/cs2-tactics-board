@@ -2,7 +2,7 @@ import React, { useState, useEffect, useCallback, useMemo, useRef } from "react"
 import {
   Plus, X, Trash2, Pencil, Play, ChevronDown, ChevronRight,
   Search, Shield, Swords, Image as ImageIcon, Link2, MapPin,
-  Loader2, Save, AlertTriangle, Crosshair
+  Loader2, Save, AlertTriangle, Crosshair, Download, Upload
 } from "lucide-react";
 
 /* ---------------------------------------------------------
@@ -219,6 +219,9 @@ export default function TacticsBoard() {
   const [mapImageDraft, setMapImageDraft] = useState("");
   const [mapImageError, setMapImageError] = useState("");
   const mapImageFileRef = useRef(null);
+  const importFileRef = useRef(null);
+  const [importPending, setImportPending] = useState(null); // parsed data waiting confirmation
+  const [importError, setImportError] = useState("");
 
   useEffect(() => {
     if (!selectedMap && maps.length) setSelectedMap(maps[0]);
@@ -311,6 +314,60 @@ export default function TacticsBoard() {
     setAddingMap(false);
   };
 
+  const handleExportData = () => {
+    const payload = {
+      exportedAt: new Date().toISOString(),
+      maps,
+      tactics,
+      mapImages,
+    };
+    const blob = new Blob([JSON.stringify(payload, null, 2)], { type: "application/json" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = `cs2-tactics-backup-${new Date().toISOString().slice(0, 10)}.json`;
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+    URL.revokeObjectURL(url);
+  };
+
+  const triggerImport = () => {
+    setImportError("");
+    importFileRef.current?.click();
+  };
+
+  const handleImportFile = (e) => {
+    const file = e.target.files?.[0];
+    e.target.value = "";
+    if (!file) return;
+    setImportError("");
+    const reader = new FileReader();
+    reader.onload = () => {
+      try {
+        const data = JSON.parse(reader.result);
+        if (!Array.isArray(data.tactics) || !Array.isArray(data.maps)) {
+          setImportError("File không đúng định dạng dữ liệu CS2 Tactics Board.");
+          return;
+        }
+        setImportPending(data);
+      } catch (err) {
+        setImportError("Không đọc được file JSON, kiểm tra lại file nhé.");
+      }
+    };
+    reader.onerror = () => setImportError("Không đọc được file, thử lại nhé.");
+    reader.readAsText(file);
+  };
+
+  const confirmImport = async () => {
+    if (!importPending) return;
+    await persistMaps(importPending.maps || []);
+    await persistTactics(importPending.tactics || []);
+    await persistMapImages(importPending.mapImages || {});
+    setImportPending(null);
+    setSelectedMap((importPending.maps || [])[0] || null);
+  };
+
   if (loading) {
     return (
       <div className="tac-root" style={{ minHeight: 600, display: "flex", alignItems: "center", justifyContent: "center" }}>
@@ -395,6 +452,25 @@ export default function TacticsBoard() {
               <Plus size={14} /> Thêm map
             </button>
           )}
+        </div>
+
+        <div style={{ padding: "10px", borderTop: "1px solid #2A3340", display: "flex", flexDirection: "column", gap: 6 }}>
+          <button
+            onClick={handleExportData}
+            className="tac-iconbtn"
+            style={{ display: "flex", alignItems: "center", gap: 8, padding: "8px 10px", borderRadius: 8, border: "1px solid #2A3340", background: "transparent", color: "#B6BCC6", cursor: "pointer", fontSize: 12.5 }}
+          >
+            <Download size={14} /> Xuất dữ liệu
+          </button>
+          <button
+            onClick={triggerImport}
+            className="tac-iconbtn"
+            style={{ display: "flex", alignItems: "center", gap: 8, padding: "8px 10px", borderRadius: 8, border: "1px solid #2A3340", background: "transparent", color: "#B6BCC6", cursor: "pointer", fontSize: 12.5 }}
+          >
+            <Upload size={14} /> Nhập dữ liệu
+          </button>
+          <input ref={importFileRef} type="file" accept="application/json,.json" onChange={handleImportFile} style={{ display: "none" }} />
+          {importError && <div style={{ fontSize: 11, color: "#E2574C" }}>{importError}</div>}
         </div>
       </div>
 
@@ -576,6 +652,15 @@ export default function TacticsBoard() {
         />
       )}
 
+      {importPending && (
+        <ConfirmDialog
+          title="Nhập dữ liệu?"
+          message={`Toàn bộ dữ liệu hiện tại (${tactics.length} chiến thuật) sẽ bị thay thế bằng dữ liệu trong file (${importPending.tactics.length} chiến thuật). Hành động này không thể hoàn tác.`}
+          onCancel={() => setImportPending(null)}
+          onConfirm={confirmImport}
+        />
+      )}
+
       {lightbox && (
         <div
           onClick={() => setLightbox(null)}
@@ -688,6 +773,29 @@ function TacticRows({ index, tactic, onEdit, onDelete, onImage }) {
             {i === 0 && (
               <td rowSpan={rowSpan} style={{ ...tdBase, color: "#B6BCC6", lineHeight: 1.6, whiteSpace: "pre-wrap", background: "#161B22" }}>
                 {tactic.description || "—"}
+                {tactic.descImages?.length > 0 && (
+                  <div style={{ display: "flex", gap: 10, flexWrap: "wrap", marginTop: 10 }}>
+                    {tactic.descImages.map(normalizeImage).map((img, k) => (
+                      <div key={img.id || k} style={{ width: 84, display: "flex", flexDirection: "column", alignItems: "center", gap: 4 }}>
+                        <button
+                          onClick={() => onImage(img)}
+                          onMouseEnter={showPreview(img)}
+                          onMouseMove={movePreview}
+                          onMouseLeave={hidePreview}
+                          className="tac-thumb"
+                          style={{ border: "1px solid #2A3340", borderRadius: 6, padding: 0, background: "none", cursor: "zoom-in", overflow: "hidden", width: 84, height: 52, flexShrink: 0 }}
+                        >
+                          <img src={img.src} alt={img.caption || ""} style={{ width: "100%", height: "100%", objectFit: "cover", display: "block" }} />
+                        </button>
+                        {img.caption && (
+                          <span style={{ fontSize: 10.5, color: "#9BA3AF", textAlign: "center", lineHeight: 1.35, wordBreak: "break-word" }}>
+                            {img.caption}
+                          </span>
+                        )}
+                      </div>
+                    ))}
+                  </div>
+                )}
               </td>
             )}
 
@@ -697,7 +805,7 @@ function TacticRows({ index, tactic, onEdit, onDelete, onImage }) {
               {videos.length > 0 ? (
                 <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
                   {videos.map((v, vi) => {
-                    const yt = parseYoutube(v.url);
+                    const yt = v.fileData ? null : parseYoutube(v.url);
                     const isOpen = openVideos[v.id];
                     return (
                       <div key={v.id} style={{ paddingTop: vi > 0 ? 6 : 0, borderTop: vi > 0 ? "1px solid #232B36" : "none" }}>
@@ -710,7 +818,12 @@ function TacticRows({ index, tactic, onEdit, onDelete, onImage }) {
                           <Play size={12} /> {v.desc ? "Xem video" : (videos.length > 1 ? `Video ${vi + 1}` : "Xem video")}
                           {isOpen ? <ChevronDown size={12} /> : <ChevronRight size={12} />}
                         </button>
-                        {isOpen && yt && (
+                        {isOpen && v.fileData && (
+                          <div className="tac-fade-in" style={{ marginTop: 8, borderRadius: 6, overflow: "hidden", width: "100%", maxWidth: 260, background: "#000" }}>
+                            <video src={v.fileData} controls style={{ width: "100%", display: "block" }} />
+                          </div>
+                        )}
+                        {isOpen && !v.fileData && yt && (
                           <div className="tac-fade-in" style={{ marginTop: 8, borderRadius: 6, overflow: "hidden", width: "100%", maxWidth: 260, aspectRatio: "16/9", background: "#000" }}>
                             <iframe
                               width="100%" height="100%"
@@ -722,7 +835,7 @@ function TacticRows({ index, tactic, onEdit, onDelete, onImage }) {
                             />
                           </div>
                         )}
-                        {isOpen && !yt && (
+                        {isOpen && !v.fileData && !yt && v.url && (
                           <a href={v.url} target="_blank" rel="noreferrer" style={{ fontSize: 12, color: "#5B9BD5", display: "inline-flex", alignItems: "center", gap: 4, marginTop: 4 }}>
                             <Link2 size={11} /> Mở liên kết video
                           </a>
@@ -833,8 +946,17 @@ function TacticForm({ initial, map, onCancel, onSave }) {
   const [side, setSide] = useState(initial?.side || "CT");
   const [name, setName] = useState(initial?.name || "");
   const [description, setDescription] = useState(initial?.description || "");
+  const [descImages, setDescImages] = useState(() =>
+    (initial?.descImages || []).map((img) =>
+      typeof img === "string" ? { id: uid(), src: img, caption: "" } : { id: img.id || uid(), src: img.src, caption: img.caption || "" }
+    )
+  );
+  const [newDescImage, setNewDescImage] = useState("");
+  const [descImageError, setDescImageError] = useState("");
+  const [descImagesLoading, setDescImagesLoading] = useState(false);
+  const descImageFilesRef = useRef(null);
   const [assignments, setAssignments] = useState(() => {
-    const src = initial?.assignments?.length ? initial.assignments : [{ id: uid(), role: "", videoUrls: [{ id: uid(), url: "", desc: "" }], note: "", images: [] }];
+    const src = initial?.assignments?.length ? initial.assignments : [{ id: uid(), role: "", videoUrls: [{ id: uid(), url: "", desc: "", fileData: "", fileName: "" }], note: "", images: [] }];
     const legacyImages = (initial?.images || []).map((img) =>
       typeof img === "string" ? { id: uid(), src: img, caption: "" } : { id: img.id || uid(), src: img.src, caption: img.caption || "" }
     );
@@ -847,10 +969,10 @@ function TacticForm({ initial, map, onCancel, onSave }) {
         role: a.role || "",
         note: a.note || "",
         videoUrls: Array.isArray(a.videoUrls) && a.videoUrls.length
-          ? a.videoUrls.map((v) => ({ id: v.id || uid(), url: v.url || "", desc: v.desc || "" }))
+          ? a.videoUrls.map((v) => ({ id: v.id || uid(), url: v.url || "", desc: v.desc || "", fileData: v.fileData || "", fileName: v.fileName || "" }))
           : a.videoUrl
-          ? [{ id: uid(), url: a.videoUrl, desc: "" }]
-          : [{ id: uid(), url: "", desc: "" }],
+          ? [{ id: uid(), url: a.videoUrl, desc: "", fileData: "", fileName: "" }]
+          : [{ id: uid(), url: "", desc: "", fileData: "", fileName: "" }],
         images: ownImages.length ? ownImages : (idx === 0 ? legacyImages : []),
       };
     });
@@ -858,16 +980,20 @@ function TacticForm({ initial, map, onCancel, onSave }) {
   const [newImageDrafts, setNewImageDrafts] = useState({}); // { [assignmentId]: string }
   const [imageError, setImageError] = useState("");
   const [imagesLoadingFor, setImagesLoadingFor] = useState(null); // assignmentId
+  const [videoError, setVideoError] = useState("");
+  const [videoLoadingFor, setVideoLoadingFor] = useState(null); // videoId
   const nameRef = useRef(null);
   const imageFilesRef = useRef(null);
-  const uploadTargetRef = useRef(null); // assignmentId currently targeted by hidden file input
+  const videoFilesRef = useRef(null);
+  const uploadTargetRef = useRef(null); // assignmentId currently targeted by hidden image file input
+  const uploadVideoTargetRef = useRef(null); // { assignmentId, videoId } targeted by hidden video file input
 
   useEffect(() => { nameRef.current?.focus(); }, []);
 
   const updateAssignment = (id, field, value) => {
     setAssignments((prev) => prev.map((a) => (a.id === id ? { ...a, [field]: value } : a)));
   };
-  const addAssignment = () => setAssignments((prev) => [...prev, { id: uid(), role: "", videoUrls: [{ id: uid(), url: "", desc: "" }], note: "", images: [] }]);
+  const addAssignment = () => setAssignments((prev) => [...prev, { id: uid(), role: "", videoUrls: [{ id: uid(), url: "", desc: "", fileData: "", fileName: "" }], note: "", images: [] }]);
   const removeAssignment = (id) => setAssignments((prev) => prev.filter((a) => a.id !== id));
 
   const updateVideoField = (assignmentId, videoId, field, value) => {
@@ -879,13 +1005,48 @@ function TacticForm({ initial, map, onCancel, onSave }) {
   };
   const addVideoUrl = (assignmentId) => {
     setAssignments((prev) => prev.map((a) => (
-      a.id === assignmentId ? { ...a, videoUrls: [...a.videoUrls, { id: uid(), url: "", desc: "" }] } : a
+      a.id === assignmentId ? { ...a, videoUrls: [...a.videoUrls, { id: uid(), url: "", desc: "", fileData: "", fileName: "" }] } : a
     )));
   };
   const removeVideoUrl = (assignmentId, videoId) => {
     setAssignments((prev) => prev.map((a) => (
       a.id === assignmentId ? { ...a, videoUrls: a.videoUrls.filter((v) => v.id !== videoId) } : a
     )));
+  };
+
+  const triggerVideoUpload = (assignmentId, videoId) => {
+    uploadVideoTargetRef.current = { assignmentId, videoId };
+    videoFilesRef.current?.click();
+  };
+  const clearVideoFile = (assignmentId, videoId) => {
+    setAssignments((prev) => prev.map((a) => (
+      a.id === assignmentId
+        ? { ...a, videoUrls: a.videoUrls.map((v) => (v.id === videoId ? { ...v, fileData: "", fileName: "" } : v)) }
+        : a
+    )));
+  };
+  const handleVideoFile = (e) => {
+    const target = uploadVideoTargetRef.current;
+    const file = e.target.files?.[0];
+    e.target.value = "";
+    if (!file || !target) return;
+    if (!file.type.startsWith("video/")) { setVideoError("Vui lòng chọn một file video."); return; }
+    setVideoError("");
+    setVideoLoadingFor(target.videoId);
+    const reader = new FileReader();
+    reader.onload = () => {
+      setAssignments((prev) => prev.map((a) => (
+        a.id === target.assignmentId
+          ? { ...a, videoUrls: a.videoUrls.map((v) => (v.id === target.videoId ? { ...v, fileData: reader.result, fileName: file.name, url: "" } : v)) }
+          : a
+      )));
+      setVideoLoadingFor(null);
+    };
+    reader.onerror = () => {
+      setVideoError("Không đọc được file video, thử lại nhé.");
+      setVideoLoadingFor(null);
+    };
+    reader.readAsDataURL(file);
   };
 
   const addAssignmentImage = (assignmentId) => {
@@ -933,6 +1094,32 @@ function TacticForm({ initial, map, onCancel, onSave }) {
     }).finally(() => setImagesLoadingFor(null));
   };
 
+  const addDescImage = () => {
+    const v = newDescImage.trim();
+    if (!v) return;
+    setDescImages((prev) => [...prev, { id: uid(), src: v, caption: "" }]);
+    setNewDescImage("");
+  };
+  const removeDescImage = (id) => setDescImages((prev) => prev.filter((img) => img.id !== id));
+  const updateDescImageCaption = (id, caption) => setDescImages((prev) => prev.map((img) => (img.id === id ? { ...img, caption } : img)));
+  const handleDescImageFiles = (e) => {
+    const files = Array.from(e.target.files || []);
+    e.target.value = "";
+    if (!files.length) return;
+    const valid = files.filter((f) => {
+      if (!f.type.startsWith("image/")) { setDescImageError("Một số file không phải ảnh đã bị bỏ qua."); return false; }
+      return true;
+    });
+    if (!valid.length) return;
+    setDescImageError("");
+    setDescImagesLoading(true);
+    Promise.all(valid.map((f) => compressImage(f))).then((results) => {
+      setDescImages((prev) => [...prev, ...results.map((src) => ({ id: uid(), src, caption: "" }))]);
+    }).catch(() => {
+      setDescImageError("Không đọc được một số file ảnh, thử lại nhé.");
+    }).finally(() => setDescImagesLoading(false));
+  };
+
   const canSave = name.trim().length > 0;
 
   const handleSubmit = () => {
@@ -943,8 +1130,9 @@ function TacticForm({ initial, map, onCancel, onSave }) {
       side,
       name: name.trim(),
       description: description.trim(),
+      descImages,
       assignments: assignments
-        .map((a) => ({ ...a, videoUrls: a.videoUrls.filter((v) => v.url.trim()) }))
+        .map((a) => ({ ...a, videoUrls: a.videoUrls.filter((v) => v.url.trim() || v.fileData) }))
         .filter((a) => a.role.trim() || a.videoUrls.length || a.note.trim() || a.images.length),
     });
   };
@@ -1016,6 +1204,59 @@ function TacticForm({ initial, map, onCancel, onSave }) {
             onChange={(e) => setDescription(e.target.value)}
             placeholder="Mô tả chi tiết cách triển khai…"
           />
+
+          <div style={{ marginTop: 10 }}>
+            <span style={{ fontSize: 11, color: "#5C6573", marginBottom: 6, display: "block" }}>Hình ảnh minh hoạ cho mô tả</span>
+            <div style={{ display: "flex", gap: 8, marginBottom: 8 }}>
+              <input
+                className="tac-input"
+                style={inputStyle}
+                value={newDescImage}
+                onChange={(e) => setNewDescImage(e.target.value)}
+                onKeyDown={(e) => { if (e.key === "Enter") addDescImage(); }}
+                placeholder="Dán link ảnh rồi nhấn Enter…"
+              />
+              <button onClick={addDescImage} className="tac-iconbtn" style={{ background: "#1B232E", border: "1px solid #2A3340", borderRadius: 8, padding: "0 12px", color: "#E8EAED", cursor: "pointer", flexShrink: 0 }}>
+                <Link2 size={14} />
+              </button>
+              <input
+                ref={descImageFilesRef}
+                type="file"
+                accept="image/*"
+                multiple
+                onChange={handleDescImageFiles}
+                style={{ display: "none" }}
+              />
+              <button
+                onClick={() => descImageFilesRef.current?.click()}
+                className="tac-iconbtn"
+                style={{ display: "flex", alignItems: "center", gap: 6, background: "#1B232E", border: "1px solid #2A3340", borderRadius: 8, padding: "0 12px", color: "#E8EAED", cursor: "pointer", fontSize: 12.5, flexShrink: 0, whiteSpace: "nowrap" }}
+              >
+                {descImagesLoading ? <Loader2 size={13} style={{ animation: "spin 1s linear infinite" }} /> : <ImageIcon size={14} />}
+                Tải ảnh lên
+              </button>
+            </div>
+            {descImageError && <div style={{ fontSize: 12, color: "#E2574C", marginBottom: 8 }}>{descImageError}</div>}
+            {descImages.length > 0 && (
+              <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+                {descImages.map((img) => (
+                  <div key={img.id} style={{ display: "flex", gap: 8, alignItems: "center", background: "#161B22", border: "1px solid #232B36", borderRadius: 7, padding: 7 }}>
+                    <img src={img.src} alt="" style={{ width: 50, height: 34, objectFit: "cover", borderRadius: 5, border: "1px solid #2A3340", flexShrink: 0 }} />
+                    <input
+                      className="tac-input"
+                      style={{ ...inputStyle, flex: 1, padding: "7px 10px" }}
+                      value={img.caption}
+                      onChange={(e) => updateDescImageCaption(img.id, e.target.value)}
+                      placeholder="Mô tả ảnh (tuỳ chọn)"
+                    />
+                    <button onClick={() => removeDescImage(img.id)} style={{ background: "none", border: "none", color: "#5C6573", cursor: "pointer", flexShrink: 0 }}>
+                      <X size={14} />
+                    </button>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
         </div>
 
         {/* Assignments */}
@@ -1042,7 +1283,7 @@ function TacticForm({ initial, map, onCancel, onSave }) {
                   placeholder={`Role #${i + 1} (VD: Người đi site A)`}
                 />
 
-                <span style={{ fontSize: 11, color: "#5C6573", marginBottom: 6, display: "block" }}>Link video Youtube</span>
+                <span style={{ fontSize: 11, color: "#5C6573", marginBottom: 6, display: "block" }}>Video đính kèm</span>
                 <div style={{ display: "flex", flexDirection: "column", gap: 8, marginBottom: 8 }}>
                   {a.videoUrls.map((v, vi) => (
                     <div key={v.id} style={{ display: "flex", gap: 6, alignItems: "flex-start", background: "#161B22", border: "1px solid #232B36", borderRadius: 7, padding: 8 }}>
@@ -1054,13 +1295,35 @@ function TacticForm({ initial, map, onCancel, onSave }) {
                           onChange={(e) => updateVideoField(a.id, v.id, "desc", e.target.value)}
                           placeholder={`Mô tả video #${vi + 1} (vd: Ném lửa or smoke upper - 13p13s)`}
                         />
-                        <input
-                          className="tac-input"
-                          style={inputStyle}
-                          value={v.url}
-                          onChange={(e) => updateVideoField(a.id, v.id, "url", e.target.value)}
-                          placeholder="Link Youtube (vd: https://youtu.be/ID?t=793)"
-                        />
+                        {v.fileData ? (
+                          <div style={{ display: "flex", alignItems: "center", gap: 8, background: "#0E1117", border: "1px solid #2A3340", borderRadius: 8, padding: "9px 11px" }}>
+                            <Play size={14} style={{ color: "#5B9BD5", flexShrink: 0 }} />
+                            <span style={{ fontSize: 13, color: "#E8EAED", flex: 1, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                              {v.fileName || "Video đã tải lên"}
+                            </span>
+                            <button onClick={() => clearVideoFile(a.id, v.id)} style={{ background: "none", border: "none", color: "#5C6573", cursor: "pointer", flexShrink: 0 }}>
+                              <X size={14} />
+                            </button>
+                          </div>
+                        ) : (
+                          <div style={{ display: "flex", gap: 6 }}>
+                            <input
+                              className="tac-input"
+                              style={inputStyle}
+                              value={v.url}
+                              onChange={(e) => updateVideoField(a.id, v.id, "url", e.target.value)}
+                              placeholder="Dán link Youtube (vd: https://youtu.be/ID?t=793)"
+                            />
+                            <button
+                              onClick={() => triggerVideoUpload(a.id, v.id)}
+                              className="tac-iconbtn"
+                              style={{ display: "flex", alignItems: "center", gap: 6, background: "#1B232E", border: "1px solid #2A3340", borderRadius: 8, padding: "0 12px", color: "#E8EAED", cursor: "pointer", fontSize: 12.5, flexShrink: 0, whiteSpace: "nowrap" }}
+                            >
+                              {videoLoadingFor === v.id ? <Loader2 size={13} style={{ animation: "spin 1s linear infinite" }} /> : <Play size={13} />}
+                              Tải video lên
+                            </button>
+                          </div>
+                        )}
                       </div>
                       {a.videoUrls.length > 1 && (
                         <button onClick={() => removeVideoUrl(a.id, v.id)} style={{ background: "none", border: "none", color: "#5C6573", cursor: "pointer", flexShrink: 0, paddingTop: 8 }}>
@@ -1070,12 +1333,13 @@ function TacticForm({ initial, map, onCancel, onSave }) {
                     </div>
                   ))}
                 </div>
+                {videoError && <div style={{ fontSize: 12, color: "#E2574C", marginBottom: 8 }}>{videoError}</div>}
                 <button
                   onClick={() => addVideoUrl(a.id)}
                   className="tac-chip"
                   style={{ display: "flex", alignItems: "center", gap: 4, fontSize: 12, color: "#5B9BD5", background: "transparent", border: "none", padding: 0, marginBottom: 12 }}
                 >
-                  <Plus size={12} /> Thêm link video khác
+                  <Plus size={12} /> Thêm video khác
                 </button>
 
                 <input
@@ -1140,6 +1404,13 @@ function TacticForm({ initial, map, onCancel, onSave }) {
             accept="image/*"
             multiple
             onChange={handleImageFiles}
+            style={{ display: "none" }}
+          />
+          <input
+            ref={videoFilesRef}
+            type="file"
+            accept="video/*"
+            onChange={handleVideoFile}
             style={{ display: "none" }}
           />
         </div>
