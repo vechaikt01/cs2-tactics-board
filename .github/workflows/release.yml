@@ -1,0 +1,33 @@
+name: Release
+
+# Chạy tự động mỗi khi bạn đẩy một tag dạng v1.0.1, v1.1.0, v2.0.0...
+on:
+  push:
+    tags:
+      - "v*.*.*"
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    runs-on: windows-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Build renderer
+        run: npm run build
+
+      - name: Build & publish Windows installer to GitHub Releases
+        run: npx electron-builder --publish always
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}

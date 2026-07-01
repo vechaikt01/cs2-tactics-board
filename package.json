@@ -1,0 +1,60 @@
+{
+  "name": "cs2-tactics-board",
+  "productName": "CS2 Tactics Board",
+  "version": "1.0.0",
+  "description": "Ứng dụng quản lý chiến thuật CS2 theo map, chạy offline trên Windows.",
+  "author": "YOUR_NAME",
+  "license": "MIT",
+  "private": true,
+  "main": "electron/main.js",
+  "scripts": {
+    "dev": "vite",
+    "build": "vite build",
+    "electron:dev": "concurrently -k \"npm:dev\" \"npm:electron:wait\"",
+    "electron:wait": "wait-on tcp:5173 && cross-env NODE_ENV=development electron .",
+    "electron:build": "npm run build && electron-builder",
+    "release": "npm run build && electron-builder --publish always"
+  },
+  "dependencies": {
+    "electron-updater": "^6.1.7",
+    "lucide-react": "^0.383.0",
+    "react": "^18.2.0",
+    "react-dom": "^18.2.0"
+  },
+  "devDependencies": {
+    "@vitejs/plugin-react": "^4.2.1",
+    "concurrently": "^8.2.2",
+    "cross-env": "^7.0.3",
+    "electron": "^30.0.1",
+    "electron-builder": "^24.13.3",
+    "vite": "^5.2.10",
+    "wait-on": "^7.2.0"
+  },
+  "build": {
+    "appId": "com.yourname.cs2tacticsboard",
+    "productName": "CS2 Tactics Board",
+    "files": [
+      "dist/**/*",
+      "electron/**/*",
+      "seed/**/*"
+    ],
+    "directories": {
+      "output": "release"
+    },
+    "win": {
+      "target": ["nsis"]
+    },
+    "nsis": {
+      "oneClick": false,
+      "allowToChangeInstallationDirectory": true,
+      "createDesktopShortcut": true
+    },
+    "publish": [
+      {
+        "provider": "github",
+        "owner": "vechaikt01",
+        "repo": "cs2-tactics-board"
+      }
+    ]
+  }
+}

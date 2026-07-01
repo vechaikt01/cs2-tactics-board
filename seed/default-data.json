@@ -1,0 +1,52 @@
+{
+  "maps": ["Dust2", "Mirage", "Inferno", "Nuke", "Ancient", "Anubis", "Overpass", "Vertigo", "Train"],
+  "tactics": [
+    {
+      "id": "seed-1",
+      "map": "Dust2",
+      "side": "CT",
+      "name": "Chiếm water nhanh nhất",
+      "description": "Cần 3 người set đồ. Cụ thể:\n- Người đi site A ném support lửa or smoke chặn upper, đi kèm 2 flash để team địch ở stair mù\n- Vị trí spawn số 4: ném smoke che stair\n- 1 nhân sự đi mid đẩy water lấy lợi thế",
+      "assignments": [
+        {
+          "id": "seed-1-a1",
+          "role": "Người đi site A",
+          "videoUrls": [
+            { "id": "seed-1-a1-v1", "url": "https://youtu.be/IAmaS6pstuU?t=793", "desc": "Ném lửa or smoke upper (13p13s)" },
+            { "id": "seed-1-a1-v2", "url": "https://youtu.be/IAmaS6pstuU?t=814", "desc": "Flash stair (13p34s)" }
+          ],
+          "note": "",
+          "images": []
+        },
+        {
+          "id": "seed-1-a2",
+          "role": "Vị trí spawn số 4",
+          "videoUrls": [
+            { "id": "seed-1-a2-v1", "url": "https://youtu.be/GL77Xs2UWvo?t=31", "desc": "Ném smoke che stair (0p31s)" }
+          ],
+          "note": "",
+          "images": []
+        }
+      ]
+    },
+    {
+      "id": "seed-2",
+      "map": "Dust2",
+      "side": "T",
+      "name": "Counter tatic No.1",
+      "description": "Một người ném lửa + grenade",
+      "assignments": [
+        {
+          "id": "seed-2-a1",
+          "role": "",
+          "videoUrls": [
+            { "id": "seed-2-a1-v1", "url": "https://youtu.be/GL77Xs2UWvo?t=222", "desc": "Cách ném (3p42s)" }
+          ],
+          "note": "",
+          "images": []
+        }
+      ]
+    }
+  ],
+  "mapImages": {}
+}
