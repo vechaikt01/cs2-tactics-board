@@ -1,7 +1,7 @@
 {
   "name": "cs2-tactics-board",
   "productName": "CS2 Tactics Board",
-  "version": "1.0.1",
+  "version": "1.0.2",
   "description": "Ứng dụng quản lý chiến thuật CS2 theo map, chạy offline trên Windows.",
   "author": "YOUR_NAME",
   "license": "MIT",
