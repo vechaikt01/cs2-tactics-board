@@ -374,13 +374,45 @@ export default function TacticsBoard() {
     reader.readAsText(file);
   };
 
-  const confirmImport = async () => {
+  const confirmImport = async (mode = "replace") => {
     if (!importPending) return;
-    await persistMaps(importPending.maps || []);
-    await persistTactics(importPending.tactics || []);
-    await persistMapImages(importPending.mapImages || {});
-    setImportPending(null);
-    setSelectedMap((importPending.maps || [])[0] || null);
+    const incomingMaps = importPending.maps || [];
+    const incomingTactics = importPending.tactics || [];
+    const incomingMapImages = importPending.mapImages || {};
+
+    if (mode === "merge") {
+      // Add without wiping out what's already here: keep every existing
+      // map/tactic/map-image as-is, and only bring in items from the file
+      // whose id/name isn't already present. Importing several backup
+      // files one after another this way keeps combining them instead of
+      // each one erasing what the previous import added.
+      const nextMaps = [...maps];
+      incomingMaps.forEach((m) => { if (!nextMaps.includes(m)) nextMaps.push(m); });
+
+      const existingIds = new Set(tactics.map((t) => t.id));
+      const nextTactics = [...tactics];
+      incomingTactics.forEach((t) => {
+        if (!t.id || !existingIds.has(t.id)) {
+          const id = t.id && !existingIds.has(t.id) ? t.id : uid();
+          existingIds.add(id);
+          nextTactics.push({ ...t, id });
+        }
+      });
+
+      const nextMapImages = { ...incomingMapImages, ...mapImages };
+
+      await persistMaps(nextMaps);
+      await persistTactics(nextTactics);
+      await persistMapImages(nextMapImages);
+      setImportPending(null);
+      if (!selectedMap && nextMaps[0]) setSelectedMap(nextMaps[0]);
+    } else {
+      await persistMaps(incomingMaps);
+      await persistTactics(incomingTactics);
+      await persistMapImages(incomingMapImages);
+      setImportPending(null);
+      setSelectedMap(incomingMaps[0] || null);
+    }
   };
 
   if (loading) {
@@ -670,9 +702,14 @@ export default function TacticsBoard() {
       {importPending && (
         <ConfirmDialog
           title="Nhập dữ liệu?"
-          message={`Toàn bộ dữ liệu hiện tại (${tactics.length} chiến thuật) sẽ bị thay thế bằng dữ liệu trong file (${importPending.tactics.length} chiến thuật). Hành động này không thể hoàn tác.`}
+          message={`File có ${importPending.tactics.length} chiến thuật. Chọn "Gộp / Thêm mới" để thêm vào dữ liệu hiện tại (${tactics.length} chiến thuật) mà không xóa gì cả — dùng cách này nếu bạn nhập nhiều file backup liên tiếp. Chọn "Thay thế toàn bộ" nếu muốn xóa hết dữ liệu hiện tại và dùng đúng dữ liệu trong file.`}
           onCancel={() => setImportPending(null)}
-          onConfirm={confirmImport}
+          extraLabel="Gộp / Thêm mới"
+          onExtra={() => confirmImport("merge")}
+          extraColor="#6FCF97"
+          confirmLabel="Thay thế toàn bộ"
+          confirmColor="#E2574C"
+          onConfirm={() => confirmImport("replace")}
         />
       )}
 
@@ -1452,23 +1489,32 @@ function TacticForm({ initial, map, onCancel, onSave }) {
 /* ---------------------------------------------------------
    CONFIRM DIALOG
 --------------------------------------------------------- */
-function ConfirmDialog({ title, message, onCancel, onConfirm }) {
+function ConfirmDialog({
+  title, message, onCancel, onConfirm,
+  confirmLabel = "Xóa", confirmColor = "#E2574C",
+  extraLabel, onExtra, extraColor = "#5B9BD5",
+}) {
   return (
     <div style={{ position: "fixed", inset: 0, background: "rgba(5,7,10,0.7)", display: "flex", alignItems: "center", justifyContent: "center", zIndex: 95, padding: 20 }}>
-      <div className="tac-root tac-fade-in" style={{ width: 360, background: "#161B22", border: "1px solid #2A3340", borderRadius: 14, padding: 22 }}>
+      <div className="tac-root tac-fade-in" style={{ width: 400, background: "#161B22", border: "1px solid #2A3340", borderRadius: 14, padding: 22 }}>
         <div style={{ display: "flex", gap: 10, alignItems: "flex-start", marginBottom: 14 }}>
-          <AlertTriangle size={18} style={{ color: "#E2574C", flexShrink: 0, marginTop: 2 }} />
+          <AlertTriangle size={18} style={{ color: confirmColor, flexShrink: 0, marginTop: 2 }} />
           <div>
             <div className="tac-display" style={{ fontSize: 16, fontWeight: 600, color: "#fff", marginBottom: 4 }}>{title}</div>
             <div style={{ fontSize: 13, color: "#8A93A3", lineHeight: 1.5 }}>{message}</div>
           </div>
         </div>
-        <div style={{ display: "flex", justifyContent: "flex-end", gap: 10 }}>
+        <div style={{ display: "flex", justifyContent: "flex-end", flexWrap: "wrap", gap: 10 }}>
           <button onClick={onCancel} style={{ padding: "8px 16px", borderRadius: 8, border: "1px solid #2A3340", background: "transparent", color: "#B6BCC6", cursor: "pointer", fontSize: 13 }}>
             Hủy
           </button>
-          <button onClick={onConfirm} style={{ padding: "8px 16px", borderRadius: 8, border: "none", background: "#E2574C", color: "#fff", cursor: "pointer", fontWeight: 600, fontSize: 13 }}>
-            Xóa
+          {extraLabel && onExtra && (
+            <button onClick={onExtra} style={{ padding: "8px 16px", borderRadius: 8, border: "none", background: extraColor, color: "#0E1117", cursor: "pointer", fontWeight: 600, fontSize: 13 }}>
+              {extraLabel}
+            </button>
+          )}
+          <button onClick={onConfirm} style={{ padding: "8px 16px", borderRadius: 8, border: "none", background: confirmColor, color: "#fff", cursor: "pointer", fontWeight: 600, fontSize: 13 }}>
+            {confirmLabel}
           </button>
         </div>
       </div>
