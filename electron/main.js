@@ -1,9 +1,15 @@
-const { app, BrowserWindow, ipcMain } = require("electron");
+const { app, BrowserWindow, ipcMain, shell } = require("electron");
 const path = require("path");
 const fs = require("fs");
 const { autoUpdater } = require("electron-updater");
 
 const isDev = !app.isPackaged;
+
+// Fixes a well-known Electron/Windows bug where embedded video (YouTube
+// iframes, <video> tags) flickers black repeatedly: Windows 10/11's
+// "native window occlusion" tracking conflicts with Chromium's GPU
+// compositor inside Electron. Must be set before the app is ready.
+app.commandLine.appendSwitch("disable-features", "CalculateNativeWinOcclusion");
 
 function getStorePath() {
   return path.join(app.getPath("userData"), "store.json");
@@ -80,7 +86,35 @@ function createWindow() {
       preload: path.join(__dirname, "preload.js"),
       contextIsolation: true,
       nodeIntegration: false,
+      // Keeps embedded YouTube video decoding/playing normally even when
+      // the window loses focus or is partially covered, instead of being
+      // throttled and flashing black when it resumes.
+      backgroundThrottling: false,
     },
+  });
+
+  // Any link that tries to open a new window from inside the page —
+  // including from a YouTube embed (its logo, channel, "Watch on
+  // YouTube", sign-in, etc.) — previously spawned a brand-new, full
+  // Electron window with its own menu bar, which is the stray window
+  // seen flickering behind the app. Send those to the user's real
+  // browser instead and never create a second Electron window for them.
+  win.webContents.setWindowOpenHandler(({ url }) => {
+    shell.openExternal(url);
+    return { action: "deny" };
+  });
+
+  // Safety net: if something inside the page ever tries to navigate the
+  // main window itself away to an external site, open that externally
+  // too rather than letting the app's own window navigate off to it.
+  win.webContents.on("will-navigate", (event, url) => {
+    const isLocal =
+      url.startsWith("http://localhost:5173") ||
+      url.startsWith("file://");
+    if (!isLocal) {
+      event.preventDefault();
+      shell.openExternal(url);
+    }
   });
 
   if (isDev) {
