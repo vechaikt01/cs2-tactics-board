@@ -50,6 +50,21 @@ function parseYoutube(url) {
   }
 }
 
+// Embedding YouTube videos in an <iframe> inside Electron is unreliable —
+// depending on the video's own embedding settings and the app's origin,
+// it can fail with YouTube's "Error 153" overlay or a generic browser
+// "This content is blocked" page. Rather than trying to embed at all,
+// video links are always opened in the system's default browser, landing
+// at the exact timestamp — this works for every video, every time.
+function formatTimestamp(sec) {
+  sec = Math.max(0, Math.floor(sec || 0));
+  const h = Math.floor(sec / 3600);
+  const m = Math.floor((sec % 3600) / 60);
+  const s = sec % 60;
+  const pad = (n) => String(n).padStart(2, "0");
+  return h > 0 ? `${h}:${pad(m)}:${pad(s)}` : `${m}:${pad(s)}`;
+}
+
 function getVideoList(a) {
   if (Array.isArray(a.videoUrls) && a.videoUrls.length) return a.videoUrls;
   if (a.videoUrl) return [{ id: a.id + "_v0", url: a.videoUrl }];
@@ -824,15 +839,17 @@ function TacticRows({ index, tactic, onEdit, onDelete, onImage }) {
                           </div>
                         )}
                         {isOpen && !v.fileData && yt && (
-                          <div className="tac-fade-in" style={{ marginTop: 8, borderRadius: 6, overflow: "hidden", width: "100%", maxWidth: 260, aspectRatio: "16/9", background: "#000" }}>
-                            <iframe
-                              width="100%" height="100%"
-                              src={`https://www.youtube.com/embed/${yt.id}?start=${yt.start}`}
-                              title={v.desc || a.role || "video"}
-                              frameBorder="0"
-                              allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
-                              allowFullScreen
-                            />
+                          <div className="tac-fade-in" style={{ marginTop: 8, display: "flex", alignItems: "center", gap: 8 }}>
+                            <button
+                              onClick={() => window.open(v.url, "_blank")}
+                              style={{
+                                display: "inline-flex", alignItems: "center", gap: 6, fontSize: 12.5,
+                                color: "#0E1117", background: "#5B9BD5", border: "none", borderRadius: 6,
+                                padding: "6px 10px", cursor: "pointer", fontWeight: 600,
+                              }}
+                            >
+                              <Play size={12} /> Mở video (tại {formatTimestamp(yt.start)})
+                            </button>
                           </div>
                         )}
                         {isOpen && !v.fileData && !yt && v.url && (
