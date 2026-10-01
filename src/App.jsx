@@ -2,7 +2,7 @@ import React, { useState, useEffect, useCallback, useMemo, useRef } from "react"
 import {
   Plus, X, Trash2, Pencil, Play, ChevronDown, ChevronRight,
   Search, Shield, Swords, Image as ImageIcon, Link2, MapPin,
-  Loader2, Save, AlertTriangle, Crosshair, Download, Upload, GripVertical
+  Loader2, Save, AlertTriangle, Crosshair, Download, Upload, Zap, Copy, Check
 } from "lucide-react";
 
 /* ---------------------------------------------------------
@@ -249,6 +249,15 @@ export default function TacticsBoard() {
   const importFileRef = useRef(null);
   const [importPending, setImportPending] = useState(null); // parsed data waiting confirmation
   const [importError, setImportError] = useState("");
+  const [tipCopied, setTipCopied] = useState(false);
+
+  const RADAR_TIP_CMD = 'bind CAPSLOCK "incrementvar cl_radar_scale 0 1 0.5"';
+  const handleCopyTip = () => {
+    const done = () => { setTipCopied(true); setTimeout(() => setTipCopied(false), 1500); };
+    if (navigator.clipboard?.writeText) {
+      navigator.clipboard.writeText(RADAR_TIP_CMD).then(done).catch(() => {});
+    }
+  };
 
   useEffect(() => {
     if (!selectedMap && maps.length) setSelectedMap(maps[0]);
@@ -344,13 +353,14 @@ export default function TacticsBoard() {
     await persistTactics(applySubsetOrder(tactics, reordered));
   };
 
-  // Tích vào ô ghim: đưa dòng đó lên vị trí số 1 của danh sách đang hiển thị.
-  const handlePinToTop = async (id) => {
-    const idx = mapTactics.findIndex((t) => t.id === id);
-    if (idx <= 0) return; // đã ở đầu rồi, hoặc không tìm thấy
-    const reordered = [...mapTactics];
-    const [moved] = reordered.splice(idx, 1);
-    reordered.unshift(moved);
+  // Tích chọn ghim nhiều dòng: các dòng được tích sẽ dồn lên đầu, theo
+  // đúng thứ tự người dùng tích (tích trước lên trước, tích sau lên sau);
+  // những dòng không tích giữ nguyên thứ tự tương đối với nhau ở phía sau.
+  const handleApplyPinOrder = async (pinnedIds) => {
+    const pinnedSet = new Set(pinnedIds);
+    const pinned = pinnedIds.map((id) => mapTactics.find((t) => t.id === id)).filter(Boolean);
+    const rest = mapTactics.filter((t) => !pinnedSet.has(t.id));
+    const reordered = [...pinned, ...rest];
     await persistTactics(applySubsetOrder(tactics, reordered));
   };
 
@@ -534,6 +544,53 @@ export default function TacticsBoard() {
               <Plus size={14} /> Thêm map
             </button>
           )}
+
+          {/* Mẹo pro */}
+          <div
+            style={{
+              margin: "14px 2px 4px",
+              padding: "12px 12px 11px",
+              borderRadius: 10,
+              border: "1px solid #2A3340",
+              background: "linear-gradient(160deg, #1B232E 0%, #141A22 100%)",
+            }}
+          >
+            <div style={{ display: "flex", alignItems: "center", gap: 6, marginBottom: 8 }}>
+              <Zap size={13} style={{ color: "#E0A458" }} />
+              <span
+                className="tac-display"
+                style={{ fontSize: 10.5, fontWeight: 700, color: "#E0A458", letterSpacing: "0.08em", textTransform: "uppercase" }}
+              >
+                Mẹo pro
+              </span>
+            </div>
+            <div style={{ fontSize: 12, color: "#B6BCC6", lineHeight: 1.5, marginBottom: 9 }}>
+              Zoom in/out radar nhanh — gán phím <span style={{ color: "#E8EAED", fontWeight: 600 }}>CapsLock</span>:
+            </div>
+            <div style={{ position: "relative" }}>
+              <code
+                className="tac-mono"
+                style={{
+                  display: "block", fontSize: 10.5, color: "#6FCF97", background: "#0E1117",
+                  border: "1px solid #2A3340", borderRadius: 6, padding: "8px 28px 8px 9px",
+                  lineHeight: 1.6, wordBreak: "break-all",
+                }}
+              >
+                {RADAR_TIP_CMD}
+              </code>
+              <button
+                onClick={handleCopyTip}
+                title="Sao chép lệnh"
+                className="tac-iconbtn"
+                style={{
+                  position: "absolute", top: 6, right: 6, background: "transparent", border: "none",
+                  color: tipCopied ? "#6FCF97" : "#5C6573", cursor: "pointer", padding: 3, display: "flex",
+                }}
+              >
+                {tipCopied ? <Check size={13} /> : <Copy size={13} />}
+              </button>
+            </div>
+          </div>
         </div>
 
         <div style={{ padding: "10px", borderTop: "1px solid #2A3340", display: "flex", flexDirection: "column", gap: 6 }}>
@@ -712,7 +769,7 @@ export default function TacticsBoard() {
               onDelete={(t) => setConfirmDelete(t)}
               onImage={(url) => setLightbox(url)}
               onReorder={handleReorderTactic}
-              onPinToTop={handlePinToTop}
+              onApplyPinOrder={handleApplyPinOrder}
             />
           )}
         </div>
@@ -774,7 +831,7 @@ export default function TacticsBoard() {
 /* ---------------------------------------------------------
    TACTICS TABLE (layout ngang kiểu spreadsheet)
 --------------------------------------------------------- */
-function TacticsTable({ tactics, onEdit, onDelete, onImage, onReorder, onPinToTop }) {
+function TacticsTable({ tactics, onEdit, onDelete, onImage, onReorder, onApplyPinOrder }) {
   const thStyle = {
     background: "#1E3FE0", color: "#fff", fontSize: 12.5, fontWeight: 700,
     textAlign: "left", padding: "10px 12px", position: "sticky", top: 0, zIndex: 2,
@@ -794,6 +851,7 @@ function TacticsTable({ tactics, onEdit, onDelete, onImage, onReorder, onPinToTo
 
   const [dragId, setDragId] = useState(null);
   const [overId, setOverId] = useState(null);
+  const [pinnedOrder, setPinnedOrder] = useState([]); // ids theo đúng thứ tự đã tích chọn
 
   const handleDragStart = (id) => (e) => {
     setDragId(id);
@@ -815,6 +873,15 @@ function TacticsTable({ tactics, onEdit, onDelete, onImage, onReorder, onPinToTo
   const handleDragEnd = () => {
     setDragId(null);
     setOverId(null);
+  };
+  const handlePinToggle = (id, checked) => {
+    setPinnedOrder((prev) => {
+      const next = checked
+        ? (prev.includes(id) ? prev : [...prev, id])
+        : prev.filter((x) => x !== id);
+      onApplyPinOrder?.(next);
+      return next;
+    });
   };
 
   return (
@@ -842,7 +909,9 @@ function TacticsTable({ tactics, onEdit, onDelete, onImage, onReorder, onPinToTo
             onDragOverRow={handleDragOverRow(t.id)}
             onDropRow={handleDropRow(t.id)}
             onDragEnd={handleDragEnd}
-            onPinToTop={() => onPinToTop?.(t.id)}
+            isPinned={pinnedOrder.includes(t.id)}
+            pinRank={pinnedOrder.length > 1 ? pinnedOrder.indexOf(t.id) + 1 : 0}
+            onPinToggle={(checked) => handlePinToggle(t.id, checked)}
           />
         ))}
       </tbody>
@@ -852,7 +921,7 @@ function TacticsTable({ tactics, onEdit, onDelete, onImage, onReorder, onPinToTo
 
 function TacticRows({
   index, tactic, onEdit, onDelete, onImage,
-  isDragOver, onDragStart, onDragOverRow, onDropRow, onDragEnd, onPinToTop,
+  isDragOver, onDragStart, onDragOverRow, onDropRow, onDragEnd, isPinned, pinRank, onPinToggle,
 }) {
   const meta = SIDE_META[tactic.side] || SIDE_META.CT;
   const Icon = meta.icon;
@@ -871,6 +940,17 @@ function TacticRows({
   };
   const hidePreview = () => setHoverPreview(null);
 
+  // Cho phép kéo thả bắt đầu từ bất kỳ đâu trong dòng, nhưng nếu người
+  // dùng đang bấm vào một phần tử có thể tương tác (nút, link, checkbox,
+  // ảnh thu nhỏ...) thì hủy việc kéo để không chặn mất cú click bình thường.
+  const handleRowDragStart = (e) => {
+    if (e.target.closest("button, input, a, .tac-thumb")) {
+      e.preventDefault();
+      return;
+    }
+    onDragStart(e);
+  };
+
   return (
     <>
       {assignments.map((a, i) => {
@@ -879,32 +959,42 @@ function TacticRows({
           <tr
             key={a.id}
             className="tac-fade-in"
+            draggable
+            onDragStart={handleRowDragStart}
+            onDragEnd={onDragEnd}
             onDragOver={onDragOverRow}
             onDrop={onDropRow}
+            title="Kéo dòng này để đổi thứ tự"
             style={{
               background: i % 2 === 0 ? "#141A22" : "#10151C",
               boxShadow: isDragOver ? "inset 0 2px 0 0 #5B9BD5" : "none",
+              cursor: "grab",
             }}
           >
             {i === 0 && (
               <td
                 rowSpan={rowSpan}
-                draggable
-                onDragStart={onDragStart}
-                onDragEnd={onDragEnd}
-                title="Kéo để đổi thứ tự"
-                style={{ ...tdBase, textAlign: "center", background: "#161B22", cursor: "grab" }}
+                style={{ ...tdBase, textAlign: "center", background: isPinned ? "#1F3A2C" : "#161B22" }}
               >
-                <div style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 7 }}>
-                  <GripVertical size={14} style={{ color: "#5C6573" }} />
+                <div style={{ display: "flex", alignItems: "center", justifyContent: "center", gap: 5 }}>
                   <input
                     type="checkbox"
-                    checked={false}
-                    onChange={(e) => { if (e.target.checked) onPinToTop?.(); }}
-                    title="Đưa dòng này lên đầu danh sách"
-                    style={{ cursor: "pointer", width: 14, height: 14 }}
-                    onClick={(e) => e.stopPropagation()}
+                    checked={!!isPinned}
+                    onChange={(e) => onPinToggle?.(e.target.checked)}
+                    title="Tích để đưa dòng này lên đầu — tích nhiều dòng theo thứ tự mong muốn"
+                    style={{ cursor: "pointer", width: 16, height: 16, accentColor: "#6FCF97" }}
                   />
+                  {pinRank > 0 && (
+                    <span
+                      title={`Thứ tự ghim: ${pinRank}`}
+                      style={{
+                        fontSize: 10, fontWeight: 700, color: "#6FCF97", background: "#6FCF9722",
+                        borderRadius: 4, padding: "1px 5px", lineHeight: 1.4,
+                      }}
+                    >
+                      {pinRank}
+                    </span>
+                  )}
                 </div>
               </td>
             )}
