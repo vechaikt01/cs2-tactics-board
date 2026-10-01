@@ -2,7 +2,7 @@ import React, { useState, useEffect, useCallback, useMemo, useRef } from "react"
 import {
   Plus, X, Trash2, Pencil, Play, ChevronDown, ChevronRight,
   Search, Shield, Swords, Image as ImageIcon, Link2, MapPin,
-  Loader2, Save, AlertTriangle, Crosshair, Download, Upload
+  Loader2, Save, AlertTriangle, Crosshair, Download, Upload, GripVertical
 } from "lucide-react";
 
 /* ---------------------------------------------------------
@@ -63,6 +63,18 @@ function formatTimestamp(sec) {
   const s = sec % 60;
   const pad = (n) => String(n).padStart(2, "0");
   return h > 0 ? `${h}:${pad(m)}:${pad(s)}` : `${m}:${pad(s)}`;
+}
+
+// Áp một thứ tự mới cho một nhóm con (ví dụ các chiến thuật đang hiển thị
+// của 1 map) vào đúng những vị trí mà nhóm đó đang chiếm trong danh sách
+// đầy đủ — các chiến thuật thuộc map khác giữ nguyên vị trí, không bị xáo.
+function applySubsetOrder(fullList, newOrderOfSubset) {
+  const ids = new Set(newOrderOfSubset.map((t) => t.id));
+  const indices = [];
+  fullList.forEach((t, i) => { if (ids.has(t.id)) indices.push(i); });
+  const next = [...fullList];
+  indices.forEach((idx, i) => { next[idx] = newOrderOfSubset[i]; });
+  return next;
 }
 
 function getVideoList(a) {
@@ -317,6 +329,29 @@ export default function TacticsBoard() {
   const handleDelete = async (id) => {
     await persistTactics(tactics.filter((t) => t.id !== id));
     setConfirmDelete(null);
+  };
+
+  // Kéo thả: thả chiến thuật "dragId" vào đúng vị trí của "targetId"
+  // trong danh sách đang hiển thị (đã lọc theo map/side/tìm kiếm).
+  const handleReorderTactic = async (dragId, targetId) => {
+    if (!dragId || !targetId || dragId === targetId) return;
+    const fromIdx = mapTactics.findIndex((t) => t.id === dragId);
+    const toIdx = mapTactics.findIndex((t) => t.id === targetId);
+    if (fromIdx === -1 || toIdx === -1) return;
+    const reordered = [...mapTactics];
+    const [moved] = reordered.splice(fromIdx, 1);
+    reordered.splice(toIdx, 0, moved);
+    await persistTactics(applySubsetOrder(tactics, reordered));
+  };
+
+  // Tích vào ô ghim: đưa dòng đó lên vị trí số 1 của danh sách đang hiển thị.
+  const handlePinToTop = async (id) => {
+    const idx = mapTactics.findIndex((t) => t.id === id);
+    if (idx <= 0) return; // đã ở đầu rồi, hoặc không tìm thấy
+    const reordered = [...mapTactics];
+    const [moved] = reordered.splice(idx, 1);
+    reordered.unshift(moved);
+    await persistTactics(applySubsetOrder(tactics, reordered));
   };
 
   const handleAddMap = async () => {
@@ -676,6 +711,8 @@ export default function TacticsBoard() {
               onEdit={(t) => { setEditing(t); setFormOpen(true); }}
               onDelete={(t) => setConfirmDelete(t)}
               onImage={(url) => setLightbox(url)}
+              onReorder={handleReorderTactic}
+              onPinToTop={handlePinToTop}
             />
           )}
         </div>
@@ -737,13 +774,14 @@ export default function TacticsBoard() {
 /* ---------------------------------------------------------
    TACTICS TABLE (layout ngang kiểu spreadsheet)
 --------------------------------------------------------- */
-function TacticsTable({ tactics, onEdit, onDelete, onImage }) {
+function TacticsTable({ tactics, onEdit, onDelete, onImage, onReorder, onPinToTop }) {
   const thStyle = {
     background: "#1E3FE0", color: "#fff", fontSize: 12.5, fontWeight: 700,
     textAlign: "left", padding: "10px 12px", position: "sticky", top: 0, zIndex: 2,
     whiteSpace: "nowrap", letterSpacing: "0.02em",
   };
   const cols = [
+    { key: "order", label: "", width: 40 },
     { key: "stt", label: "STT", width: 50 },
     { key: "side", label: "CT/T", width: 64 },
     { key: "name", label: "Tatic", width: 160 },
@@ -754,8 +792,33 @@ function TacticsTable({ tactics, onEdit, onDelete, onImage }) {
     { key: "actions", label: "", width: 70 },
   ];
 
+  const [dragId, setDragId] = useState(null);
+  const [overId, setOverId] = useState(null);
+
+  const handleDragStart = (id) => (e) => {
+    setDragId(id);
+    try {
+      e.dataTransfer.effectAllowed = "move";
+      e.dataTransfer.setData("text/plain", id);
+    } catch {}
+  };
+  const handleDragOverRow = (id) => (e) => {
+    e.preventDefault();
+    if (dragId && id !== dragId && overId !== id) setOverId(id);
+  };
+  const handleDropRow = (id) => (e) => {
+    e.preventDefault();
+    if (dragId && dragId !== id) onReorder?.(dragId, id);
+    setDragId(null);
+    setOverId(null);
+  };
+  const handleDragEnd = () => {
+    setDragId(null);
+    setOverId(null);
+  };
+
   return (
-    <table className="tac-mono" style={{ borderCollapse: "collapse", width: "100%", minWidth: 1100, fontFamily: "'Inter', sans-serif" }}>
+    <table className="tac-mono" style={{ borderCollapse: "collapse", width: "100%", minWidth: 1140, fontFamily: "'Inter', sans-serif" }}>
       <thead>
         <tr>
           {cols.map((c) => (
@@ -774,6 +837,12 @@ function TacticsTable({ tactics, onEdit, onDelete, onImage }) {
             onEdit={() => onEdit(t)}
             onDelete={() => onDelete(t)}
             onImage={onImage}
+            isDragOver={overId === t.id}
+            onDragStart={handleDragStart(t.id)}
+            onDragOverRow={handleDragOverRow(t.id)}
+            onDropRow={handleDropRow(t.id)}
+            onDragEnd={handleDragEnd}
+            onPinToTop={() => onPinToTop?.(t.id)}
           />
         ))}
       </tbody>
@@ -781,7 +850,10 @@ function TacticsTable({ tactics, onEdit, onDelete, onImage }) {
   );
 }
 
-function TacticRows({ index, tactic, onEdit, onDelete, onImage }) {
+function TacticRows({
+  index, tactic, onEdit, onDelete, onImage,
+  isDragOver, onDragStart, onDragOverRow, onDropRow, onDragEnd, onPinToTop,
+}) {
   const meta = SIDE_META[tactic.side] || SIDE_META.CT;
   const Icon = meta.icon;
   const [openVideos, setOpenVideos] = useState({});
@@ -804,7 +876,38 @@ function TacticRows({ index, tactic, onEdit, onDelete, onImage }) {
       {assignments.map((a, i) => {
         const videos = getVideoList(a);
         return (
-          <tr key={a.id} className="tac-fade-in" style={{ background: i % 2 === 0 ? "#141A22" : "#10151C" }}>
+          <tr
+            key={a.id}
+            className="tac-fade-in"
+            onDragOver={onDragOverRow}
+            onDrop={onDropRow}
+            style={{
+              background: i % 2 === 0 ? "#141A22" : "#10151C",
+              boxShadow: isDragOver ? "inset 0 2px 0 0 #5B9BD5" : "none",
+            }}
+          >
+            {i === 0 && (
+              <td
+                rowSpan={rowSpan}
+                draggable
+                onDragStart={onDragStart}
+                onDragEnd={onDragEnd}
+                title="Kéo để đổi thứ tự"
+                style={{ ...tdBase, textAlign: "center", background: "#161B22", cursor: "grab" }}
+              >
+                <div style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 7 }}>
+                  <GripVertical size={14} style={{ color: "#5C6573" }} />
+                  <input
+                    type="checkbox"
+                    checked={false}
+                    onChange={(e) => { if (e.target.checked) onPinToTop?.(); }}
+                    title="Đưa dòng này lên đầu danh sách"
+                    style={{ cursor: "pointer", width: 14, height: 14 }}
+                    onClick={(e) => e.stopPropagation()}
+                  />
+                </div>
+              </td>
+            )}
             {i === 0 && (
               <td rowSpan={rowSpan} style={{ ...tdBase, textAlign: "center", fontWeight: 700, color: "#fff", background: "#161B22" }}>
                 {index}
